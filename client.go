@@ -44,13 +44,10 @@ const (
 	ScreenHeight       = 270
 	Padding            = 18
 	Row                = 24
-	RegularTermination = "end"
+	RegularTermination = "terminate"
 	AlertInterval      = 480
 	CountDownInterval  = 300
-	DateLayout = "2006/01/02(Mon)"
-	TimeLayout = "15:04:05"
 	DateTimeLayout = "2006/01/02 15:04:05"
-	NoRecord = "未打卡"
 )
 
 var (
@@ -138,7 +135,7 @@ type Game struct {
 	msg       string
 	clockType pb.ClockType
 	queryType pb.QueryType
-	records []record
+	records   []*pb.Record
 }
 
 func (g *Game) Update() error {
@@ -234,29 +231,13 @@ func (g *Game) Update() error {
 					g.flag = Select
 					return
 				}
-				records := make([]record, 0, len(res.Records))
-				for _, r := range res.Records {
-					record := record{in: NoRecord, out: NoRecord}
-					record.date = r.Date.AsTime().Local()
-					if r.In.IsValid() {
-						record.in = r.In.AsTime().Local().Format(TimeLayout)
-					}
-					if r.Out.IsValid() {
-						record.out = r.Out.AsTime().Local().Format(TimeLayout)
-					}
-					records = append(records, record)
-				}
-				g.records = records
+				g.records = res.Records
 				g.flag = Result
 			}()
 		case repeatingKeyPressed(ebiten.KeyArrowUp):
-			if g.queryType != pb.QueryType_DAY {
-				g.queryType--
-			}
+			g.queryType = pb.QueryType_DAY
 		case repeatingKeyPressed(ebiten.KeyArrowDown):
-			if g.queryType != pb.QueryType_MONTH {
-				g.queryType++
-			}
+			g.queryType = pb.QueryType_LAST_SEVEN
 		case repeatingKeyPressed(ebiten.KeyArrowLeft):
 			g.flag = Select
 		}
@@ -324,26 +305,14 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			screen.DrawImage(checkedImage, op)
 			op.GeoM.Translate(0, Row)
 			screen.DrawImage(uncheckedImage, op)
-			op.GeoM.Translate(0, Row)
-			screen.DrawImage(uncheckedImage, op)
-		} else if g.queryType == pb.QueryType_WEEK{
-			op.GeoM.Translate(Padding, Row*7+2)
-			screen.DrawImage(uncheckedImage, op)
-			op.GeoM.Translate(0, Row)
-			screen.DrawImage(checkedImage, op)
-			op.GeoM.Translate(0, Row)
-			screen.DrawImage(uncheckedImage, op)
 		} else {
 			op.GeoM.Translate(Padding, Row*7+2)
-			screen.DrawImage(uncheckedImage, op)
-			op.GeoM.Translate(0, Row)
 			screen.DrawImage(uncheckedImage, op)
 			op.GeoM.Translate(0, Row)
 			screen.DrawImage(checkedImage, op)
 		}
 		text.Draw(screen, "本日", regularFont, Padding+20, Padding+Row*7, color.White)
-		text.Draw(screen, "本週", regularFont, Padding+20, Padding+Row*8, color.White)
-		text.Draw(screen, "本月", regularFont, Padding+20, Padding+Row*9, color.White)
+		text.Draw(screen, "前七日", regularFont, Padding+20, Padding+Row*8, color.White)
 
 	case Loading, Clocking, Querying:
 		msg := g.msg
@@ -354,23 +323,18 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		text.Draw(screen, fmt.Sprintf("將於 %d 秒後自動關閉或按<Enter>直接關閉", (g.tick/60)+1), regularFont, Padding, Padding+Row*7, color.White)
 	case Result:
 		text.Draw(screen, "日期", regularFont, Padding, Padding+Row*3, color.White)
-		text.Draw(screen, "上班打卡", regularFont, 200, Padding+Row*3, color.White)
-		text.Draw(screen, "下班打卡", regularFont, 340, Padding+Row*3, color.White)
+		text.Draw(screen, "上班", regularFont, 200, Padding+Row*3, color.White)
+		text.Draw(screen, "下班", regularFont, 340, Padding+Row*3, color.White)
 		for i, r := range g.records {
-			text.Draw(screen, r.date.Format(DateLayout), regularFont, Padding, Padding+Row*(4+i), color.White)
-			text.Draw(screen, r.in, regularFont, 200, Padding+Row*(4+i), color.White)
-			text.Draw(screen, r.out, regularFont, 340, Padding+Row*(4+i), color.White)
+			text.Draw(screen, r.Date, regularFont, Padding, Padding+Row*(4+i), color.White)
+			text.Draw(screen, r.In, regularFont, 200, Padding+Row*(4+i), color.White)
+			text.Draw(screen, r.Out, regularFont, 340, Padding+Row*(4+i), color.White)
 		}
 	}
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return outsideWidth, outsideHeight
-}
-
-type record struct {
-	date time.Time
-	in, out string
 }
 
 type gRPC struct {
